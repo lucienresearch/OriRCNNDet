@@ -1,5 +1,5 @@
 import os
-
+import shutil
 def format2dota(data_dir):
     """
     将 xray 的 annotations 中标注文件的格式转换为 DOTA 格式
@@ -31,6 +31,21 @@ def format2dota(data_dir):
                             print("occur error:", line)
 
 
-if  __name__ == "__main__":
-    data_dir = '/home/lzk/OriRCNNDet/mmrotate/data/datasets_hw'
-    format2dota(data_dir)
+def copy_patch_data(data_dir, dst_dir):
+    # 将数据放到合成数据集目录中，用于训练
+    for mode in ["train", "val"]:
+        to_sub_dir = os.path.join(dst_dir, mode)
+        os.makedirs(to_sub_dir, exist_ok=False)
+        # if os.path.exists(to_sub_dir):
+        #     shutil.rmtree(to_sub_dir)
+        # os.mkdir(to_sub_dir)
+
+        os.system(f"cp -r {data_dir}/{mode}/images_patched {to_sub_dir}")
+        os.system(f"cp -r {data_dir}/{mode}/annotations_patched {to_sub_dir}/")
+
+if __name__ == "__main__":
+    data_dir = '/home/lucien/research/lucienresearch/OriRCNNDet/mmrotate/data/datasets_hw'
+    dst_dir = "/home/lucien/research/lucienresearch/OriRCNNDet/mmrotate/data/datasets_synthesis"
+    # copy_patch_data(data_dir, dst)
+
+    format2dota(dst_dir)

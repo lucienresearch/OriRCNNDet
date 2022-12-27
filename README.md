@@ -4,18 +4,28 @@
 2022-12-8 引入 mmrotate repository
 
 
+### 运行环境
+pip install openmim
+mim install mmcv-full
+mim install mmdet
+cd mmrotate
+pip install -r requirements/build.txt
+pip install -v -e .
+
+
 ### 将 xray 的 annotations 中标注文件的格式转换为 DOTA 格式  
-把 datasets_hw.zip 解压到 OriRCNNDet/mmrotate/data/ 中
-执行 mmrotate/data/data_prep.py 转换格式
+把 datasets_hw.zip 解压到 OriRCNNDet/mmrotate/data/ 中  
+执行 mmrotate/data/data_prep.py 转换格式  
 
 
 ### 为 xray 数据添加配置文件  
-mmrotate/configs/_base_/datasets/xray.py  
-mmrotate/configs/oriented_rcnn/oriented_rcnn_r50_fpn_1x_dota_le90_xray.py 
+mmrotate/configs/_base_/datasets/xray.py   
+NOTE: 在 xray.py 中，将 data_root 修改为具体的数据集目录  
+mmrotate/configs/oriented_rcnn/oriented_rcnn_r50_fpn_1x_dota_le90_xray.py   
 
 
 ### 执行训练脚本
-python tools/train.py  configs/oriented_rcnn/oriented_rcnn_r50_fpn_1x_dota_le90_xray.py
+python tools/train.py  configs/oriented_rcnn/oriented_rcnn_r50_fpn_1x_dota_le90_xray.py  
 
 
 ### 验证集评估结果
@@ -31,3 +41,21 @@ python tools/train.py  configs/oriented_rcnn/oriented_rcnn_r50_fpn_1x_dota_le90_
 | battery     | 303 | 1069 | 0.842  | 0.705 |
 | metalbottle | 250 | 854  | 0.904  | 0.820 |
 | mAP         |     |      |        | 0.700 |
+
+2022-12-27 23:06:06,077 - val set - 扩充数据之后
+可以看出，由于增加了 gt 的数量，精度降低了。
++---------------------+-----+------+--------+-------+
+| class               | gts | dets | recall | ap    |
++---------------------+-----+------+--------+-------+
+| knife               | 693 | 2046 | 0.645  | 0.497 |
+| pressure            | 236 | 1257 | 0.818  | 0.597 |
+| umbrella            | 173 | 844  | 0.763  | 0.599 |
+| lighter             | 526 | 2174 | 0.648  | 0.481 |
+| OCbottle            | 350 | 1366 | 0.871  | 0.665 |
+| glassbottle         | 203 | 923  | 0.862  | 0.578 |
+| battery             | 368 | 1718 | 0.848  | 0.606 |
+| metalbottle         | 302 | 1234 | 0.930  | 0.738 |
+| electronicequipment | 444 | 1152 | 0.793  | 0.690 |
++---------------------+-----+------+--------+-------+
+| mAP                 |     |      |        | 0.606 |
++---------------------+-----+------+--------+-------+

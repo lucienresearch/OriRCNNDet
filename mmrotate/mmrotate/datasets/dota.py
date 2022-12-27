@@ -65,11 +65,13 @@ class DOTADataset(CustomDataset):
         ann_files = glob.glob(ann_folder + '/*.txt')
         data_infos = []
         if not ann_files:  # test phase
-            ann_files = glob.glob(ann_folder + '/*.png')
+            # ann_files = glob.glob(ann_folder + '/*.png')
+            ann_files = glob.glob(ann_folder + '/*.jpg')
             for ann_file in ann_files:
                 data_info = {}
                 img_id = osp.split(ann_file)[1][:-4]
-                img_name = img_id + '.png'
+                # img_name = img_id + '.png'
+                img_name = img_id + '.jpg'
                 data_info['filename'] = img_name
                 data_info['ann'] = {}
                 data_info['ann']['bboxes'] = []
@@ -79,7 +81,8 @@ class DOTADataset(CustomDataset):
             for ann_file in ann_files:
                 data_info = {}
                 img_id = osp.split(ann_file)[1][:-4]
-                img_name = img_id + '.png'
+                # img_name = img_id + '.png'
+                img_name = img_id + '.jpg'
                 data_info['filename'] = img_name
                 data_info['ann'] = {}
                 gt_bboxes = []

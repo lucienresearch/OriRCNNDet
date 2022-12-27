@@ -9,6 +9,8 @@ import kornia
 import os
 import cv2
 import random
+import shutil
+
 
 PARAM_IRON = [
     [0, 0, 104.3061111111111], 
@@ -42,34 +44,40 @@ def load_infos(xlist):
     faces = []
 
     for elm in xlist:
-        if elm[0] == "v" and elm[1] != 'n':
-            vertices.append([float(elm.split(" ")[1]), float(elm.split(" ")[2]), float(elm.split(" ")[3])])
-        elif elm[0] == "f":
-            if '//' in elm:
-                faces.append([int(elm.split(" ")[1][0]) - 1, int(elm.split(" ")[2][0]) - 1, int(elm.split(" ")[3][0]) - 1])
-            else:
-                faces.append([int(elm.split(" ")[1]) - 1, int(elm.split(" ")[2]) - 1, int(elm.split(" ")[3]) - 1])
+        try:
+            if elm[0] == "v" and elm[1] != 'n':
+                vertices.append([float(elm.split(" ")[1]), float(elm.split(" ")[2]), float(elm.split(" ")[3])])
+            elif elm[0] == "f":
+                if '//' in elm:
+                    faces.append([int(elm.split(" ")[1][0]) - 1, int(elm.split(" ")[2][0]) - 1, int(elm.split(" ")[3][0]) - 1])
+                else:
+                    faces.append([int(elm.split(" ")[1]) - 1, int(elm.split(" ")[2]) - 1, int(elm.split(" ")[3]) - 1])
+        except Exception as e:
+            print('e:', str(e))
+            print("load_infos err1: ", elm)
+            print("load_infos err2: ", elm.split(" "))
 
     vertices = torch.Tensor(vertices).type(torch.cuda.FloatTensor)
     faces = np.array(faces, dtype=np.int32)
     return vertices, faces
 
-def load_from_file(obj, root, M=None):
+
+def load_from_file(obj, root, path, M=None):
     """
     Load vertices and faces from an .obj file.
     coordinates will be normalized to N(0.5, 0.5)
     """
     ## single part
     if type(obj) == dict:
-        name = list(obj.keys())[0]
-        path = root + name + '.obj'
+        # name = list(obj.keys())[0]
+        # path = root + name + '.obj'
         with open(path, "r") as fp:
             xlist = fp.readlines()
 
         vertices, faces = load_infos(xlist)
         # rotate
         if M is not None:
-            vertices = torch.mm(vertices, M)
+            vertices = torch.mm(vertices, M)   # 对顶点进行旋转
     
         # clamp
         min_xyz, _ = torch.min(vertices, 0)
@@ -156,7 +164,7 @@ def simulate(img, material="iron"):
     return: (N, 3, H, W) range(0, 1) rgb image
     """
     if material == "iron":
-        max_depth = 8
+        max_depth = 8   
         params = PARAM_IRON
     if material == "iron_fix":
         max_depth = 8
@@ -351,7 +359,8 @@ def cal_patch_poly(patch):
     ret, binary = cv2.threshold(gray, 1, 255, cv2.THRESH_BINARY)  # 图像二值化
     binary = np.expand_dims(binary, axis=2)
     contours, hierarchy = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)  # 查找物体轮廓
-    assert len(contours) == 1
+    assert len(contours) <= 10    # 允许有少量噪点，TODO 噪点是怎么来的？
+    print("contours:", len(contours))
     rect = cv2.minAreaRect(contours[0])
     points = cv2.boxPoints(rect)
     points = np.int0(points)
@@ -378,28 +387,62 @@ def save_img(path, img_tensor, shape):
     cv2.imwrite(path, img)
 
 
-if __name__ == '__main__':
-    ## config
-    obj_root = './objs/'                                    # obj root path
-    depth_save_path = './depthes'                           # depth save path
-    patch_save_path = './patches'                           # patch save path
-    obj_dict = {                                            # .obj file name and infos
-        'scissors_vf': {
-                'category':'knife', 
+def random_samples_objs(obj_root, index):
+    """ 对 obj 进行随机采样 """
+
+    # 设置每个类别所属的材料： TODO iron_fix 是什么意思？  umbrella 不止按那个材料，先按塑料了。
+    material_dic = {
+                    'glassbottle':'glass',
+                    'pressure':'iron', 
+                    'metalbottle':'iron',
+                    'umbrella':'plastic', 
+                    'lighter':'plastic', 
+                    'OCbottle':'plastic', 
+                    'battery':'plastic',
+                    'electronicequipment':'plastic',
+                    }              
+
+    # 首先随机选择一个类别
+    categorys = list(material_dic.keys())
+    rand_cat_idx = random.randint(0, len(categorys)-1)
+    # rand_cat_idx = index % len(categorys)
+    category = categorys[rand_cat_idx]
+
+    # 在该类别中随机选择一个 obj
+    obj_names = [obj_file for obj_file in os.listdir(os.path.join(obj_root, category)) if obj_file.endswith('.obj')]
+    rand_obj_idx = random.randint(0, len(obj_names)-1)
+    # rand_obj_idx = index % len(obj_names)
+    obj_path = os.path.join(obj_root, category, obj_names[rand_obj_idx])
+    obj_name = obj_names[rand_obj_idx].split('.')[0]
+
+        
+    obj_dict = {                                     # .obj file name and infos
+        f'{category}_{obj_name}_vf': {
+                'category': category, 
                 'multi-part': False,
-                'material':'iron',
-                'patch_size': (150, 150)
+                'material':material_dic[category],
+                'patch_size': (150, 150)             # TODO patch 大小
             }
-    }                                                       
+    }   
 
-    if not os.path.exists(patch_save_path):
-        os.mkdir(patch_save_path)
+    print('obj_path:', obj_path)
 
-    
-    rotate_param = [110, 38, 56]                             # rotate config (x, y, z)
+    return obj_dict, obj_path
+
+def save_patch(patch):
+    cv2.imwrite
+
+
+def gen_patch(obj_dict, obj_path):
+    """ 根据 obj 生成 patch """
+
+    # 生成随机角度
+    # rotate_param = [110, 38, 56]                             # rotate config (x, y, z)
+    rotate_param = [random.randint(50, 250) for _ in range(3)]   # 随机生成旋转角度
     M = get_rotate_matrix(rotate_param)
 
-    vertices, faces = load_from_file(obj_dict, obj_root, M) # load obj vertices and faces with rotation
+    obj_root = os.path.dirname(obj_path)
+    vertices, faces = load_from_file(obj_dict, obj_root, obj_path, M) # load obj vertices and faces with rotation
 
     obj_dict_info = obj_dict
 
@@ -430,92 +473,138 @@ if __name__ == '__main__':
     # patch_img = patch.squeeze(0) * 255
     # save_img(patch_save_path+'/' + name + '_patch.png',patch_img, patch_size)
 
-    
-    ## Step (4): stick patch to image
-    print('------------------Step (3): Stick patch.------------------')     
-    img_root = '/media/datasets/rotate_labels_buaa/train/images/'
-    patched_img_root = '/media/datasets/rotate_labels_buaa/train/images_patched/'
-    
-    img_id = 'train00001'
-    
-    if not os.path.exists(patched_img_root):
-        os.mkdir(patched_img_root)
-    
-    ## load img
-    print(img_id)
-    img_path = os.path.join(img_root, img_id+'.jpg')
-    img = cv2.imread(img_path)
-    img_tensor = torch.from_numpy(img.astype(np.float32)).permute(2, 0, 1)
-    img_tensor = img_tensor.cuda()
-    
-    img_h, img_w = img_tensor.shape[1:]
-    point = find_stick_point(patch_size[0], patch_size[1], img_h, img_w)
-    # stick patch
-    img_tensor[:, point[0]:point[0]+patch_size[0], point[1]:point[1]+patch_size[1]].mul_(patch.squeeze(0))
-    # save sticked img
-    # save_img_name = img_id.split('.')[0] + '_' + name + '.jpg'
-    new_img_path = os.path.join(patched_img_root, img_id+'.jpg')
-    save_img(new_img_path, img_tensor, img_tensor.shape[1:])
 
-    print('------------------part (3): Save new annotation.------------------') 
-    ann_root = '/media/datasets/rotate_labels_buaa/train/annotations'
-    patched_ann_root = '/media/datasets/rotate_labels_buaa/train/annotations_patched/'
-    if not os.path.exists(patched_ann_root):
-        os.mkdir(patched_ann_root)
+    return patch, mask, rotate_param
+
+
+def parse_patches(data_root, obj_root, mode='train', num=-1):
+   
+    # 合成的图片
+    img_root = data_root + f'{mode}/images/'
+    patched_img_root = data_root + f'{mode}/images_patched/'
+    if os.path.exists(patched_img_root):
+        shutil.rmtree(patched_img_root)
+    os.mkdir(patched_img_root)
+
+    # 合成的注释
+    ann_root = data_root + f'{mode}/annotations'
+    patched_ann_root = data_root + f'{mode}/annotations_patched/'
+    if os.path.exists(patched_ann_root):
+       shutil.rmtree(patched_ann_root) 
+    os.mkdir(patched_ann_root)
+
+    # 合成的图片结果
+    img_save_path = f'./results/{mode}'
+    if os.path.exists(img_save_path):
+        shutil.rmtree(img_save_path)
+    os.mkdir(img_save_path)
+
+    # 合成使用的参数
+    eval_ann_root = data_root +f'{mode}/annotations_eval/'
+    if os.path.exists(eval_ann_root):
+        shutil.rmtree(eval_ann_root)
+    os.mkdir(eval_ann_root)
+        
+
+    # 获取全部图片
+    img_names = [name for name in os.listdir(img_root) if name.endswith('.jpg')]
+    img_names.sort()
+    num = num if num > 0 else len(img_names)
+
+    for i, img_name in enumerate(img_names[:num]):
     
-    ann_path = os.path.join(ann_root, img_id+'.txt')
-    anns = open(ann_path, 'r').readlines()
-    new_ann_path = os.path.join(patched_ann_root, img_id+'.txt')
-    new_anns_file = open(new_ann_path, 'w')
-    
-    # calculate coordinates of four vertices of rotate bounding box
-    patch[~mask] = 0
-    points = cal_patch_poly(patch.squeeze(0) * 255)
-    
-    # add stick point offset
-    points[:, 0] += point[1]
-    points[:, 1] += point[0]
-    
-    # make annotation format 
-    points_list = points.reshape(-1).tolist()
-    points_str = [str(i) for i in points_list]
-    category = obj_infos['category']
-    new_ann = [img_id+'.jpg', '1', category, '0 0 0 0']
-    new_ann = new_ann + points_str
-    str_new_ann = ' '.join(new_ann) + '\n'
-    anns.append(str_new_ann)
+        img_id = img_name.split('.')[0]  # img_id = 'train00001'
 
-    # write to file
-    for ann in anns:
-        new_anns_file.write(ann)
-    new_anns_file.close()
+        ## Step (4): stick patch to image
+        print('------------------Step (3): Stick patch.------------------')     
+        ## load img
+        print(img_id)
+        img_path = os.path.join(img_root, img_id+'.jpg')
+        img = cv2.imread(img_path)
+        img_tensor = torch.from_numpy(img.astype(np.float32)).permute(2, 0, 1)  #lzk 为什么这么做？
+        img_tensor = img_tensor.cuda()
+        
+        for _ in range(3): # 一张图片粘贴 3 个 patch
 
-    ## check the anno is true
-    img_save_path = './results'
-    if not os.path.exists(img_save_path):
-        os.mkdir(img_save_path)
+            obj_dict, obj_path = random_samples_objs(obj_root, i)
+            patch, mask, rotate_param = gen_patch(obj_dict, obj_path)
 
-    img = cv2.imread(new_img_path)
-    image = cv2.drawContours(img, [points], 0, (0, 0, 255), 2)
-    save_img_name = img_id.split('.')[0] + '_' + name + '_rec_patch.jpg'
-    cv2.imwrite(img_save_path + '/' + save_img_name, image)
+            # we only consider object has one part 
+            name = list(obj_dict.keys())[0]
+            obj_infos = list(obj_dict.values())[0]
 
-    ## Step (6): save eval annotation
-    print('------------------Part (4): Save eval annotation.------------------') 
-    eval_ann_root = '/media/datasets/rotate_labels_buaa/train/annotations_eval/'
-    if not os.path.exists(eval_ann_root):
-        os.mkdir(eval_ann_root)
+            patch_size = obj_infos['patch_size']
+            
+            img_h, img_w = img_tensor.shape[1:]
+            point = find_stick_point(patch_size[0], patch_size[1], img_h, img_w)   # 随机生成粘贴位置
+            # stick patch
+            img_tensor[:, point[0]:point[0]+patch_size[0], point[1]:point[1]+patch_size[1]].mul_(patch.squeeze(0))
+            # save sticked img
+            # save_img_name = img_id.split('.')[0] + '_' + name + '.jpg'
+            new_img_path = os.path.join(patched_img_root, img_id+'.jpg')
+            save_img(new_img_path, img_tensor, img_tensor.shape[1:])
 
-    eval_ann_path = os.path.join(eval_ann_root, img_id+'.txt')
-    eval_anns_file = open(eval_ann_path, 'w')
+            print('------------------part (3): Save new annotation.------------------') 
 
-    eval_ann = []
-    eval_ann.append(category)
-    eval_ann.append(name)
-    eval_ann.extend([str(i) for i in rotate_param])
-    eval_ann.extend([str(i) for i in point])
-    eval_ann.extend([str(i) for i in patch_size])
+            ann_path = os.path.join(ann_root, img_id+'.txt')
+            anns = open(ann_path, 'r').readlines()
+            new_ann_path = os.path.join(patched_ann_root, img_id+'.txt')
+            new_anns_file = open(new_ann_path, 'w')
+            
+            # calculate coordinates of four vertices of rotate bounding box
+            patch[~mask] = 0
+            points = cal_patch_poly(patch.squeeze(0) * 255)
+            
+            # add stick point offset
+            points[:, 0] += point[1]
+            points[:, 1] += point[0]
+            
+            # make annotation format 
+            points_list = points.reshape(-1).tolist()
+            points_str = [str(i) for i in points_list]
+            category = obj_infos['category']
+            new_ann = [img_id+'.jpg', '1', category, '0 0 0 0']
+            new_ann = new_ann + points_str
+            str_new_ann = ' '.join(new_ann) + '\n'
+            anns.append(str_new_ann)
 
-    eval_anns_file.write(' '.join(eval_ann) + '\n')
+            # write to file
+            for ann in anns:
+                new_anns_file.write(ann)
+            new_anns_file.close()
+
+            # 保存粘贴结果，用于检查是否正确
+            img = cv2.imread(new_img_path)
+            image = cv2.drawContours(img, [points], 0, (0, 0, 255), 2)
+            save_img_name = img_id.split('.')[0] + '_' + name + '_rec_patch.jpg'
+            cv2.imwrite(img_save_path + '/' + save_img_name, image)
+
+            ## Step (6): save eval annotation
+            print('------------------Part (4): Save eval annotation.------------------') 
+
+            eval_ann_path = os.path.join(eval_ann_root, img_id+'.txt')
+            eval_anns_file = open(eval_ann_path, 'w')
+
+            eval_ann = []
+            eval_ann.append(category)
+            eval_ann.append(name)
+            eval_ann.extend([str(i) for i in rotate_param])
+            eval_ann.extend([str(i) for i in point])
+            eval_ann.extend([str(i) for i in patch_size])
+
+            eval_anns_file.write(' '.join(eval_ann) + '\n')
+
+
+if __name__ == '__main__':
+    ## config
+    data_root = '/home/lucien/research/lucienresearch/OriRCNNDet/mmrotate/data/datasets_hw/'
+    obj_par = '/home/lucien/research/lucienresearch/OriRCNNDet/mmrotate/data/'
+    obj_root = obj_par + 'objs/'                                    # obj root path
+    # depth_save_path = obj_par + 'depthes'                           # depth save path
+    # patch_save_path = obj_par + 'patches'                           # patch save path
+
+    parse_patches(data_root, obj_root, mode='val')
+
+   
     
     
