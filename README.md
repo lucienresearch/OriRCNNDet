@@ -5,12 +5,12 @@
 
 
 ### 运行环境
-pip install openmim
-mim install mmcv-full
-mim install mmdet
-cd mmrotate
-pip install -r requirements/build.txt
-pip install -v -e .
+pip install openmim  
+mim install mmcv-full  
+mim install mmdet  
+cd mmrotate  
+pip install -r requirements/build.txt  
+pip install -v -e .  
 
 
 ### 将 xray 的 annotations 中标注文件的格式转换为 DOTA 格式  
@@ -44,9 +44,8 @@ python tools/train.py  configs/oriented_rcnn/oriented_rcnn_r50_fpn_1x_dota_le90_
 
 2022-12-27 23:06:06,077 - val set - 扩充数据之后
 可以看出，由于增加了 gt 的数量，精度降低了。
-+---------------------+-----+------+--------+-------+
 | class               | gts | dets | recall | ap    |
-+---------------------+-----+------+--------+-------+
+|---------------------|-----|------|--------|-------|
 | knife               | 693 | 2046 | 0.645  | 0.497 |
 | pressure            | 236 | 1257 | 0.818  | 0.597 |
 | umbrella            | 173 | 844  | 0.763  | 0.599 |
@@ -56,6 +55,4 @@ python tools/train.py  configs/oriented_rcnn/oriented_rcnn_r50_fpn_1x_dota_le90_
 | battery             | 368 | 1718 | 0.848  | 0.606 |
 | metalbottle         | 302 | 1234 | 0.930  | 0.738 |
 | electronicequipment | 444 | 1152 | 0.793  | 0.690 |
-+---------------------+-----+------+--------+-------+
 | mAP                 |     |      |        | 0.606 |
-+---------------------+-----+------+--------+-------+
