@@ -38,6 +38,15 @@ PARAM_GLASS = [
 ]
 
 MIN_EPS = 1e-6
+category_size = {
+                    'glassbottle':(180,180),
+                    'pressure':(200,200), 
+                    'metalbottle':(180,180),
+                    'umbrella':(300,300),
+                    'lighter':(100,100),
+                    'OCbottle':(150,150), 
+                    'battery':(110,110),
+                    }
 
 def load_infos(xlist):
     vertices = []
@@ -469,7 +478,7 @@ def gen_patch(obj_dict, obj_path):
     name = list(obj_dict_info.keys())[0]
     obj_infos = list(obj_dict_info.values())[0]
 
-    patch_size = obj_infos['patch_size']
+    patch_size = category_size[obj_infos['category']] 
     group = torch.clamp(v, 0, 1)
     depth_clamp = ball2depth(group, f, patch_size[0], patch_size[1]).unsqueeze(0)
 
@@ -548,7 +557,7 @@ def parse_patches(data_root, obj_root, mode='train', num=-1):
             name = list(obj_dict.keys())[0]
             obj_infos = list(obj_dict.values())[0]
 
-            patch_size = obj_infos['patch_size']
+            patch_size = category_size[obj_infos['category']] 
             
             img_h, img_w = img_tensor.shape[1:]
             point = find_stick_point(patch_size[0], patch_size[1], img_h, img_w)   # 随机生成粘贴位置
