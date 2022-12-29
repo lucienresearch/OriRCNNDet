@@ -10,6 +10,8 @@ import os
 import cv2
 import random
 import shutil
+import math
+import itertools
 
 
 PARAM_IRON = [
@@ -390,18 +392,53 @@ def get_max_area_rects(contours):
     return rects[0]
 
 
-def find_stick_point(patch_h, patch_w, img_h, img_w, border=10):
-    """
-    Find stick point randomly
-    """
+def find_available_areas(img, patch_h, patch_w, img_h, img_w, border=10, topN=5):
     x_min = border
     y_min = border
     x_max = img_h - patch_h - border
     y_max = img_w - patch_w - border
     assert x_max > x_min and y_max > y_min
-    x = random.randint(x_min, x_max)
-    y = random.randint(y_min, y_max)
-    return (x, y)
+
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    low_hsv = np.array((0, 20, 50), np.uint8)
+    high_hsv = np.array((100, 255, 255), np.uint8)
+    mask = cv2.inRange(hsv, low_hsv, high_hsv)
+
+    contours, hierarchy = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    # count and filter all available areas
+    areas = []
+    for pic, contour in enumerate(contours):
+        area = cv2.contourArea(contour)
+        x, y, w, h = cv2.boundingRect(contour)
+        if (area >= 150) and (area <= img_h*img_h/4) and (x >= x_min and x <= x_max and y >= y_min and y <= y_max):
+            dist = math.sqrt((x-img_w/2)*(x-img_w/2) + (y-img_h/2)*(y-img_h/2))
+            areas.append([contour, dist, area, x, y])
+    # sort areas
+    areas = sorted(areas, key=lambda x: x[2], reverse=1)
+    areas = list(itertools.islice(areas, 30))
+
+    areas = sorted(areas, key=lambda x: -x[1]*2+x[2]*0.4, reverse=1)
+    topNAreas = list(itertools.islice(areas, topN))
+    # print areas info
+    # labeled_img = img
+    # for idx, area in enumerate(topNAreas):
+    #     x, y, w, h = cv2.boundingRect(area[0])
+    #     labeled_img = cv2.rectangle(labeled_img, (x, y), (x + w, y + h), (0, 0, 255), 2)
+    #     cv2.putText(labeled_img, "Area", (x, y), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255))
+    # cv2.imshow('labeled_img', labeled_img)
+    # cv2.waitKey(0)
+    return topNAreas
+
+def find_stick_point(available_areas, used_areas):
+    """
+    Find stick point randomly
+    """
+    while True:
+        randint = random.randint(0, len(available_areas)-1)
+        if randint not in used_areas:
+            area = available_areas[random.randint(0, len(available_areas)-1)]
+            used_areas.append(randint)
+            return (area[3], area[4])
 
 def save_img(path, img_tensor, shape):
     img_tensor = img_tensor.cpu().detach().numpy().astype(np.uint8)
@@ -546,7 +583,8 @@ def parse_patches(data_root, obj_root, mode='train', num=-1):
         img = cv2.imread(img_path)
         img_tensor = torch.from_numpy(img.astype(np.float32)).permute(2, 0, 1)  #lzk 为什么这么做？
         img_tensor = img_tensor.cuda()
-        
+
+        used_areas = []
         count = 0
         while count < 3: # 一张图片粘贴 3 个 patch
 
@@ -560,7 +598,8 @@ def parse_patches(data_root, obj_root, mode='train', num=-1):
             patch_size = category_size[obj_infos['category']] 
             
             img_h, img_w = img_tensor.shape[1:]
-            point = find_stick_point(patch_size[0], patch_size[1], img_h, img_w)   # 随机生成粘贴位置
+            available_areas = find_available_areas(img, patch_size[0], patch_size[1], img_h, img_w)
+            point = find_stick_point(available_areas, used_areas)  # 随机生成粘贴位置
             # stick patch
             img_tensor[:, point[0]:point[0]+patch_size[0], point[1]:point[1]+patch_size[1]].mul_(patch.squeeze(0))
 
@@ -627,8 +666,10 @@ def parse_patches(data_root, obj_root, mode='train', num=-1):
 
 if __name__ == '__main__':
     ## config
-    data_root = '/home/lucien/research/lucienresearch/OriRCNNDet/mmrotate/data/datasets_hw/'
-    obj_par = '/home/lucien/research/lucienresearch/OriRCNNDet/mmrotate/data/'
+    global current_path
+    current_path = os.getcwd()
+    data_root = f'{current_path}/mmrotate/data/datasets_hw/'
+    obj_par = f'{current_path}/mmrotate/data/'
     obj_root = obj_par + 'objs/'                                    # obj root path
     # depth_save_path = obj_par + 'depthes'                           # depth save path
     # patch_save_path = obj_par + 'patches'                           # patch save path
