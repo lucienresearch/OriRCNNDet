@@ -359,13 +359,27 @@ def cal_patch_poly(patch):
     ret, binary = cv2.threshold(gray, 1, 255, cv2.THRESH_BINARY)  # 图像二值化
     binary = np.expand_dims(binary, axis=2)
     contours, hierarchy = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)  # 查找物体轮廓
-    assert len(contours) <= 10    # 允许有少量噪点，TODO 噪点是怎么来的？
+    # assert len(contours) <= 5    # 允许有少量噪点，TODO 噪点是怎么来的？
+    is_pass = len(contours) <= 5   # 超过5个噪点不通过，不再使用这个patch
     print("contours:", len(contours))
-    rect = cv2.minAreaRect(contours[0])
+    # rect = cv2.minAreaRect(contours[0])
+    rect = get_max_area_rects(contours)  #超过一个轮廓时，使用面积最大的轮廓
     points = cv2.boxPoints(rect)
     points = np.int0(points)
 
-    return points
+    return points, is_pass
+
+def get_max_area_rects(contours):
+    """ 返回面积最大的轮廓 
+    (center(x,y), (width, height), angle of rotation) = cv2.minAreaRect(cont)
+    """
+    rects = []
+    for cont in contours:
+        rects.append(cv2.minAreaRect(cont))
+
+    rects.sort(key=lambda x: x[1][0]*x[1][1], reverse=True)
+    return rects[0]
+
 
 def find_stick_point(patch_h, patch_w, img_h, img_w, border=10):
     """
@@ -494,7 +508,7 @@ def parse_patches(data_root, obj_root, mode='train', num=-1):
     os.mkdir(patched_ann_root)
 
     # 合成的图片结果
-    img_save_path = f'./results/{mode}'
+    img_save_path = data_root + f'{mode}/results/'
     if os.path.exists(img_save_path):
         shutil.rmtree(img_save_path)
     os.mkdir(img_save_path)
@@ -524,7 +538,8 @@ def parse_patches(data_root, obj_root, mode='train', num=-1):
         img_tensor = torch.from_numpy(img.astype(np.float32)).permute(2, 0, 1)  #lzk 为什么这么做？
         img_tensor = img_tensor.cuda()
         
-        for _ in range(3): # 一张图片粘贴 3 个 patch
+        count = 0
+        while count < 3: # 一张图片粘贴 3 个 patch
 
             obj_dict, obj_path = random_samples_objs(obj_root, i)
             patch, mask, rotate_param = gen_patch(obj_dict, obj_path)
@@ -539,6 +554,16 @@ def parse_patches(data_root, obj_root, mode='train', num=-1):
             point = find_stick_point(patch_size[0], patch_size[1], img_h, img_w)   # 随机生成粘贴位置
             # stick patch
             img_tensor[:, point[0]:point[0]+patch_size[0], point[1]:point[1]+patch_size[1]].mul_(patch.squeeze(0))
+
+            # calculate coordinates of four vertices of rotate bounding box
+            patch[~mask] = 0
+            points, is_pass = cal_patch_poly(patch.squeeze(0) * 255)
+            # 如果 patch 不合格则不再粘贴
+            if not is_pass:
+                continue
+            else:
+                count+=1
+
             # save sticked img
             # save_img_name = img_id.split('.')[0] + '_' + name + '.jpg'
             new_img_path = os.path.join(patched_img_root, img_id+'.jpg')
@@ -550,10 +575,6 @@ def parse_patches(data_root, obj_root, mode='train', num=-1):
             anns = open(ann_path, 'r').readlines()
             new_ann_path = os.path.join(patched_ann_root, img_id+'.txt')
             new_anns_file = open(new_ann_path, 'w')
-            
-            # calculate coordinates of four vertices of rotate bounding box
-            patch[~mask] = 0
-            points = cal_patch_poly(patch.squeeze(0) * 255)
             
             # add stick point offset
             points[:, 0] += point[1]

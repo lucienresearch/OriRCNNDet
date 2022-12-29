@@ -25,7 +25,12 @@ mmrotate/configs/oriented_rcnn/oriented_rcnn_r50_fpn_1x_dota_le90_xray.py
 
 
 ### 执行训练脚本
-python tools/train.py  configs/oriented_rcnn/oriented_rcnn_r50_fpn_1x_dota_le90_xray.py  
+python tools/train.py configs/oriented_rcnn/oriented_rcnn_r50_fpn_1x_dota_le90_xray.py    
+python tools/train.py configs/oriented_rcnn/oriented_rcnn_swin_tiny_fpn_1x_dota_le90_xray.py (更优)
+
+### 执行测试脚本
+python tools/test.py configs/oriented_rcnn/oriented_rcnn_swin_tiny_fpn_1x_dota_le90_xray.py work_dirs/oriented_rcnn_swin_tiny_fpn_1x_dota_le90_xray/epoch_30.pth  
+--format-only --eval-options submission_dir=work_dirs/oriented_rcnn_swin_tiny_fpn_1x_dota_le90_xray/result  
 
 
 ### 验证集评估结果
@@ -56,3 +61,22 @@ python tools/train.py  configs/oriented_rcnn/oriented_rcnn_r50_fpn_1x_dota_le90_
 | metalbottle         | 302 | 1234 | 0.930  | 0.738 |
 | electronicequipment | 444 | 1152 | 0.793  | 0.690 |
 | mAP                 |     |      |        | 0.606 |
+
+
+2022-12-29 05:02:15,345 - mmrotate - INFO - 
+epoch 30，在 epoch 12 时已经基本收敛完成
+这里没有对 val set 进行增强
+2022-12-29 05:02:15,357 - mmrotate - INFO - Exp name: oriented_rcnn_swin_tiny_fpn_1x_dota_le90_xray.py
+test set mAP 0.763
+| class               | gts | dets | recall | ap    |
+|---------------------|-----|------|--------|-------|
+| knife               | 693 | 1515 | 0.749  | 0.650 |
+| pressure            | 173 | 513  | 0.884  | 0.778 |
+| umbrella            | 110 | 197  | 0.909  | 0.877 |
+| lighter             | 461 | 982  | 0.651  | 0.560 |
+| OCbottle            | 281 | 551  | 0.911  | 0.852 |
+| glassbottle         | 133 | 306  | 0.857  | 0.775 |
+| battery             | 303 | 738  | 0.855  | 0.733 |
+| metalbottle         | 250 | 559  | 0.916  | 0.848 |
+| electronicequipment | 444 | 747  | 0.845  | 0.789 |
+| mAP                 |     |      |        | 0.763 |

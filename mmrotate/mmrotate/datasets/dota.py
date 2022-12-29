@@ -228,10 +228,11 @@ class DOTADataset(CustomDataset):
             img_id = self.img_ids[idx]
             splitname = img_id.split('__')
             oriname = splitname[0]
-            pattern1 = re.compile(r'__\d+___\d+')
-            x_y = re.findall(pattern1, img_id)
-            x_y_2 = re.findall(r'\d+', x_y[0])
-            x, y = int(x_y_2[0]), int(x_y_2[1])
+            # pattern1 = re.compile(r'__\d+___\d+')
+            # x_y = re.findall(pattern1, img_id)
+            # x_y_2 = re.findall(r'\d+', x_y[0])
+            # x, y = int(x_y_2[0]), int(x_y_2[1])
+            x, y = 0, 0
             new_result = []
             for i, dets in enumerate(result):
                 bboxes, scores = dets[:, :-1], dets[:, [-1]]
