@@ -427,12 +427,15 @@ def find_available_areas(img, patch_h, patch_w, img_h, img_w, border=10, topN=5)
     #     cv2.putText(labeled_img, "Area", (x, y), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255))
     # cv2.imshow('labeled_img', labeled_img)
     # cv2.waitKey(0)
-    return topNAreas
+    fallback = (random.randint(x_min, x_max), random.randint(y_min, y_max))
+    return (topNAreas, fallback)
 
 def find_stick_point(available_areas, used_areas):
     """
     Find stick point randomly
     """
+    if len(available_areas) == 0 or len(available_areas) == len(used_areas):
+        return None
     while True:
         randint = random.randint(0, len(available_areas)-1)
         if randint not in used_areas:
@@ -598,8 +601,11 @@ def parse_patches(data_root, obj_root, mode='train', num=-1):
             patch_size = category_size[obj_infos['category']] 
             
             img_h, img_w = img_tensor.shape[1:]
-            available_areas = find_available_areas(img, patch_size[0], patch_size[1], img_h, img_w)
+            available_areas, fallback = find_available_areas(img, patch_size[0], patch_size[1], img_h, img_w, topN=1)
             point = find_stick_point(available_areas, used_areas)  # 随机生成粘贴位置
+            if point is None:
+                print('Using fallback')
+                point = fallback
             # stick patch
             img_tensor[:, point[0]:point[0]+patch_size[0], point[1]:point[1]+patch_size[1]].mul_(patch.squeeze(0))
 
