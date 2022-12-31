@@ -80,3 +80,14 @@ test set mAP 0.763
 | metalbottle         | 250 | 559  | 0.916  | 0.848 |
 | electronicequipment | 444 | 747  | 0.845  | 0.789 |
 | mAP                 |     |      |        | 0.763 |
+
+## 优化方法
+
+### 粘贴位置
+如果粘贴位置完全随机，可能存在物品模型与其他已有物品重叠的情况或粘贴到非行李箱/包之外的情况，在选择粘贴位置需要进行一定的重叠控制。
+方法为：先使用色彩阈值去除物品及背景，再用轮廓搜寻算法找出可粘贴物品区域，最后筛选出最合适的Top5区域并随机用于粘贴。
+观察X光照片，箱包内无物品的区域呈现浅黄色，所以采用HSV阈值区分黄色。如`[(0, 3, 100), (46, 255, 255)]`，使用OpenCV函数`cv2.inRange(hsv, low_hsv, high_hsv)`进行阈值控制，效果如下:  
+![Mask](./images/empty_area_mask.png)
+然后使用OpenCV函数寻找轮廓函数查找出所有可以粘贴的区域：`cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)`。
+但区域存在较小或较大的情况，以及距离边界过近等问题，需要基于区域大小及区域位置进一步筛选，提取出Top5区域，效果如下:  
+![Top5 Empty Area](./images/empty_area.png)
