@@ -34,8 +34,7 @@ def format2dota(data_dir):
 def copy_patch_data(data_dir, dst_dir):
     """ 将数据放到合成数据集目录中，用于训练 """
 
-    # for mode in ["train", "val", "test"]:
-    for mode in ["val"]:
+    for mode in ["train", "val", "test"]:
         sub_dir = os.path.join(dst_dir, mode)
         os.makedirs(os.path.join(sub_dir, 'images'), exist_ok=False)
         os.makedirs(os.path.join(sub_dir, 'annotations'), exist_ok=False)
@@ -43,6 +42,8 @@ def copy_patch_data(data_dir, dst_dir):
         if mode == 'train':
             os.system(f"cp -r {data_dir}/{mode}/images_patched/* {sub_dir}/images/")
             os.system(f"cp -r {data_dir}/{mode}/annotations_patched/* {sub_dir}/annotations/")
+            # os.system(f"cp -r {data_dir}/{mode}/images/* {sub_dir}/images/")
+            # os.system(f"cp -r {data_dir}/{mode}/annotations/* {sub_dir}/annotations/")
         else:
             os.system(f"cp -r {data_dir}/{mode}/images {sub_dir}/")
             os.system(f"cp -r {data_dir}/{mode}/annotations {sub_dir}/")
@@ -67,6 +68,8 @@ def merge_results(res_dir):
             for t in txt:
                 result = []
                 val = t.rstrip().split(" ")
+                # if float(val[1]) < 0.1:
+                #     continue
                 result.append(val[0] + '.jpg')
                 result.append(name)
                 result.extend(val[1:])
@@ -74,7 +77,6 @@ def merge_results(res_dir):
 
     data_result = np.array(result_all)
     np.savetxt(os.path.join(res_dir,'result.txt'), data_result[np.lexsort(data_result[:, ::-1].T)], '%s')
-
 
 
 
@@ -87,10 +89,10 @@ if __name__ == "__main__":
     # 将 datasets_hw 中合成的数据复制到 datasets_synthesis 中
     dst_dir = root_dir + "data/datasets_synthesis"
     # copy_patch_data(data_dir, dst_dir)  # copy 数据
-    format2dota(dst_dir)  # 转换数据格式到 dota
+    # format2dota(dst_dir)  # 转换数据格式到 dota
     
     # 对预测结果进行合并（预测结果是按每个类别一个文件进行保存的）
     res_dir = root_dir + 'work_dirs/oriented_rcnn_swin_tiny_fpn_1x_dota_le90_xray/result/'
-    # merge_results(res_dir)
+    merge_results(res_dir)
 
     

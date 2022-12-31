@@ -10,6 +10,8 @@ import os
 import cv2
 import random
 import shutil
+import math
+import itertools
 
 
 PARAM_IRON = [
@@ -38,15 +40,16 @@ PARAM_GLASS = [
 ]
 
 MIN_EPS = 1e-6
-category_size = {
-                    'glassbottle':(180,180),
-                    'pressure':(200,200), 
-                    'metalbottle':(180,180),
-                    'umbrella':(300,300),
-                    'lighter':(100,100),
-                    'OCbottle':(150,150), 
-                    'battery':(110,110),
-                    }
+# category_size = {
+#         'glassbottle':(150,150),
+#         'pressure':(150,150), 
+#         'metalbottle':(150,150),
+#         'umbrella':(150,150),
+#         'lighter':(100,100),
+#         'OCbottle':(150,150), 
+#         'battery':(150,150),
+#         'electronicequipment':(150, 150)
+#     }
 
 def load_infos(xlist):
     vertices = []
@@ -390,18 +393,48 @@ def get_max_area_rects(contours):
     return rects[0]
 
 
-def find_stick_point(patch_h, patch_w, img_h, img_w, border=10):
-    """
-    Find stick point randomly
-    """
+def find_available_areas(img, patch_h, patch_w, img_h, img_w, border=10, topN=5):
     x_min = border
     y_min = border
     x_max = img_h - patch_h - border
     y_max = img_w - patch_w - border
-    assert x_max > x_min and y_max > y_min
-    x = random.randint(x_min, x_max)
-    y = random.randint(y_min, y_max)
-    return (x, y)
+    assert x_max > x_min and y_max > y_min, "img_w:{}, img_h:{}, patch_w:{}, patch_h:{}".format(img_w, img_h, patch_w, patch_h)
+
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    low_hsv = np.array((0, 20, 50), np.uint8)
+    high_hsv = np.array((100, 255, 255), np.uint8)
+    mask = cv2.inRange(hsv, low_hsv, high_hsv)
+
+    contours, hierarchy = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    # count and filter all available areas
+    areas = []
+    for pic, contour in enumerate(contours):
+        area = cv2.contourArea(contour)
+        x, y, w, h = cv2.boundingRect(contour)
+        if (area >= 100) and (area <= img_h*img_h/4) and (x >= x_min and x <= x_max and y >= y_min and y <= y_max):
+            dist = math.sqrt((x-img_w/2)*(x-img_w/2) + (y-img_h/2)*(y-img_h/2))
+            areas.append([contour, dist, area, x, y])
+    # sort areas
+    areas = sorted(areas, key=lambda x: x[2], reverse=1)
+    areas = list(itertools.islice(areas, 30))
+
+    areas = sorted(areas, key=lambda x: -x[1]*2+x[2]*0.4, reverse=1)
+    topNAreas = list(itertools.islice(areas, topN))
+    fallback = (random.randint(x_min, x_max), random.randint(y_min, y_max))
+    return (topNAreas, fallback)
+
+def find_stick_point(available_areas, used_areas):
+    """
+    Find stick point randomly
+    """
+    if len(available_areas) == 0 or len(available_areas) == len(used_areas):
+        return None
+    while True:
+        randint = random.randint(0, len(available_areas)-1)
+        if randint not in used_areas:
+            area = available_areas[random.randint(0, len(available_areas)-1)]
+            used_areas.append(randint)
+            return (area[3], area[4])
 
 def save_img(path, img_tensor, shape):
     img_tensor = img_tensor.cpu().detach().numpy().astype(np.uint8)
@@ -438,13 +471,14 @@ def random_samples_objs(obj_root, index):
     obj_path = os.path.join(obj_root, category, obj_names[rand_obj_idx])
     obj_name = obj_names[rand_obj_idx].split('.')[0]
 
+    random_size = random.randint(100, 150) # 随机选择patch大小
         
     obj_dict = {                                     # .obj file name and infos
         f'{category}_{obj_name}_vf': {
                 'category': category, 
                 'multi-part': False,
                 'material':material_dic[category],
-                'patch_size': (150, 150)             # TODO patch 大小
+                'patch_size': (random_size, random_size)      
             }
     }   
 
@@ -455,13 +489,97 @@ def random_samples_objs(obj_root, index):
 def save_patch(patch):
     cv2.imwrite
 
+rotate_param_dict = {
+    'lighter/2.obj': [
+        [200, 200, 100],
+        [200, 200, 200],
+        [200, 200, 90],
+        [1, 1, 1],
+        [1, 2, 1],
+        [5, 1, 3]
+    ],
+    'lighter/3.obj': [
+        [100, 100, 200],
+        [100, 100, 300],
+        [100, 100, 250],
+        [200, 100, 250],
+        [200, 150, 250],
+        [200, 150, 100]
+    ],
+    'lighter/4.obj': [
+        [200, 100, 200],
+        [1, 100, 1],
+        [300, 300, 200],
+        [1, 100, 100],
+        [100, 100, 200],
+        [200, 150, 250]
+    ],
+    'lighter/5.obj': [
+        [100, 100, 50],
+        [200, 100, 200],
+        [300, 300, 200],
+        [200, 150, 100]
+    ],
+    'lighter/7.obj': [
+        [100, 100, 100],
+        [100, 100, 200],
+        [100, 100, 300],
+        [200, 100, 300],
+        [200, 300, 300],
+        [300, 300, 300]
+    ]
+}
+
+
+def get_rotate_param_old(obj_path):
+    # 处理window下的路径分隔符
+    obj_path = obj_path.replace("\\", "/")
+    path_split = obj_path.split("/")
+    category = path_split[len(path_split) - 2]
+    filename = path_split[len(path_split) - 1]
+    key = category + "/" + filename
+    param_list = rotate_param_dict.get(key,[])
+    param = [random.randint(50, 250) for _ in range(3)]
+    index = random.randint(0, len(param_list))
+    # 有一定概率随机生成旋转角度
+    if param_list is not None and index < len(param_list):
+        param = param_list[index]
+    return param
+
+
+def get_rotate_param(obj_path):
+    # 处理window下的路径分隔符
+    obj_path = obj_path.replace("\\", "/")
+    path_split = obj_path.split("/")
+    category = path_split[len(path_split) - 2]
+    filename = path_split[len(path_split) - 1]
+    x = random.randint(0, 360)
+    y = random.randint(0, 360)
+    z = random.randint(0, 360)
+
+    if category in ['metalbottle', 'glassbottle']:
+        while (60 <= x <= 120 or 240 <= x <= 300) and (0 <= y <= 20 or 160 <= y <= 200 or 340 <= y <= 360):
+            x = random.randint(0, 360)
+            y = random.randint(0, 360)
+
+    if category == 'lighter':
+        key = category + "/" + filename
+        param_list = rotate_param_dict.get(key, [])
+        index = random.randint(0, len(param_list))
+        # 有一定概率随机生成旋转角度
+        if param_list is not None and index < len(param_list):
+            x, y, z = param_list[index]
+            
+    return [x, y, z]
+
 
 def gen_patch(obj_dict, obj_path):
     """ 根据 obj 生成 patch """
 
     # 生成随机角度
     # rotate_param = [110, 38, 56]                             # rotate config (x, y, z)
-    rotate_param = [random.randint(50, 250) for _ in range(3)]   # 随机生成旋转角度
+    # rotate_param = [random.randint(50, 250) for _ in range(3)]   # 随机生成旋转角度
+    rotate_param = get_rotate_param(obj_path)
     M = get_rotate_matrix(rotate_param)
 
     obj_root = os.path.dirname(obj_path)
@@ -478,7 +596,8 @@ def gen_patch(obj_dict, obj_path):
     name = list(obj_dict_info.keys())[0]
     obj_infos = list(obj_dict_info.values())[0]
 
-    patch_size = category_size[obj_infos['category']] 
+    # patch_size = category_size[obj_infos['category']] 
+    patch_size = obj_infos['patch_size']
     group = torch.clamp(v, 0, 1)
     depth_clamp = ball2depth(group, f, patch_size[0], patch_size[1]).unsqueeze(0)
 
@@ -534,6 +653,8 @@ def parse_patches(data_root, obj_root, mode='train', num=-1):
     img_names.sort()
     num = num if num > 0 else len(img_names)
 
+    cc = 0
+    patch_total = 0
     for i, img_name in enumerate(img_names[:num]):
     
         img_id = img_name.split('.')[0]  # img_id = 'train00001'
@@ -546,8 +667,15 @@ def parse_patches(data_root, obj_root, mode='train', num=-1):
         img = cv2.imread(img_path)
         img_tensor = torch.from_numpy(img.astype(np.float32)).permute(2, 0, 1)  #lzk 为什么这么做？
         img_tensor = img_tensor.cuda()
-        
+
+        ann_path = os.path.join(ann_root, img_id+'.txt')
+        anns = open(ann_path, 'r').readlines()
+        eval_anns = []
+        points_all = []
+
+        used_areas = []
         count = 0
+        # patch_count = random.randint(2,3)
         while count < 3: # 一张图片粘贴 3 个 patch
 
             obj_dict, obj_path = random_samples_objs(obj_root, i)
@@ -557,12 +685,16 @@ def parse_patches(data_root, obj_root, mode='train', num=-1):
             name = list(obj_dict.keys())[0]
             obj_infos = list(obj_dict.values())[0]
 
-            patch_size = category_size[obj_infos['category']] 
+            # patch_size = category_size[obj_infos['category']] 
+            patch_size = obj_infos['patch_size']
             
             img_h, img_w = img_tensor.shape[1:]
-            point = find_stick_point(patch_size[0], patch_size[1], img_h, img_w)   # 随机生成粘贴位置
-            # stick patch
-            img_tensor[:, point[0]:point[0]+patch_size[0], point[1]:point[1]+patch_size[1]].mul_(patch.squeeze(0))
+            available_areas, fallback = find_available_areas(img, patch_size[0], patch_size[1], img_h, img_w, topN=1)
+            point = find_stick_point(available_areas, used_areas)  # 随机生成粘贴位置
+            if point is None:
+                print('Using fallback')
+                point = fallback
+                cc += 1
 
             # calculate coordinates of four vertices of rotate bounding box
             patch[~mask] = 0
@@ -573,17 +705,11 @@ def parse_patches(data_root, obj_root, mode='train', num=-1):
             else:
                 count+=1
 
-            # save sticked img
-            # save_img_name = img_id.split('.')[0] + '_' + name + '.jpg'
-            new_img_path = os.path.join(patched_img_root, img_id+'.jpg')
-            save_img(new_img_path, img_tensor, img_tensor.shape[1:])
+            patch_total += 1
 
-            print('------------------part (3): Save new annotation.------------------') 
-
-            ann_path = os.path.join(ann_root, img_id+'.txt')
-            anns = open(ann_path, 'r').readlines()
-            new_ann_path = os.path.join(patched_ann_root, img_id+'.txt')
-            new_anns_file = open(new_ann_path, 'w')
+             # stick patch
+            patch[~mask] = 1
+            img_tensor[:, point[0]:point[0]+patch_size[0], point[1]:point[1]+patch_size[1]].mul_(patch.squeeze(0))
             
             # add stick point offset
             points[:, 0] += point[1]
@@ -597,44 +723,53 @@ def parse_patches(data_root, obj_root, mode='train', num=-1):
             new_ann = new_ann + points_str
             str_new_ann = ' '.join(new_ann) + '\n'
             anns.append(str_new_ann)
+            points_all.append(points)
 
-            # write to file
-            for ann in anns:
-                new_anns_file.write(ann)
-            new_anns_file.close()
-
-            # 保存粘贴结果，用于检查是否正确
-            img = cv2.imread(new_img_path)
-            image = cv2.drawContours(img, [points], 0, (0, 0, 255), 2)
-            save_img_name = img_id.split('.')[0] + '_' + name + '_rec_patch.jpg'
-            cv2.imwrite(img_save_path + '/' + save_img_name, image)
 
             ## Step (6): save eval annotation
-            print('------------------Part (4): Save eval annotation.------------------') 
-
-            eval_ann_path = os.path.join(eval_ann_root, img_id+'.txt')
-            eval_anns_file = open(eval_ann_path, 'w')
-
             eval_ann = []
             eval_ann.append(category)
             eval_ann.append(name)
             eval_ann.extend([str(i) for i in rotate_param])
             eval_ann.extend([str(i) for i in point])
             eval_ann.extend([str(i) for i in patch_size])
+            eval_anns.append(eval_ann)
 
-            eval_anns_file.write(' '.join(eval_ann) + '\n')
+        print("fallback count:{}, total patch count:{}".format(cc, patch_total))
 
+        img_id = img_id +'_syn'
+        new_img_path = os.path.join(patched_img_root, img_id+'.jpg')
+        save_img(new_img_path, img_tensor, img_tensor.shape[1:])
+
+        # 保存粘贴结果，用于检查是否正确
+        img = cv2.imread(new_img_path)
+        for points in points_all:
+            img = cv2.drawContours(img, [points], 0, (0, 0, 255), 2)
+        save_img_name = img_id.split('.')[0] + '_rec_patch.jpg'
+        cv2.imwrite(img_save_path + '/' + save_img_name, img)
+
+        print('------------------part (3): Save new annotation.------------------') 
+        # write to file
+        new_ann_path = os.path.join(patched_ann_root, img_id+'.txt')
+        new_anns_file = open(new_ann_path, 'w')
+        for ann in anns:
+            new_anns_file.write(ann)
+        new_anns_file.close()
+
+        print('------------------Part (4): Save eval annotation.------------------') 
+        eval_ann_path = os.path.join(eval_ann_root, img_id+'.txt')
+        with open(eval_ann_path, 'w') as f:
+            for ann in eval_anns:
+                f.write(' '.join(ann) + '\n')
 
 if __name__ == '__main__':
     ## config
-    data_root = '/home/lucien/research/lucienresearch/OriRCNNDet/mmrotate/data/datasets_hw/'
-    obj_par = '/home/lucien/research/lucienresearch/OriRCNNDet/mmrotate/data/'
+    global current_path
+    current_path = os.getcwd()
+    data_root = f'{current_path}/mmrotate/data/datasets_hw/'
+    obj_par = f'{current_path}/mmrotate/data/'
     obj_root = obj_par + 'objs/'                                    # obj root path
     # depth_save_path = obj_par + 'depthes'                           # depth save path
     # patch_save_path = obj_par + 'patches'                           # patch save path
 
-    parse_patches(data_root, obj_root, mode='val')
-
-   
-    
-    
+    parse_patches(data_root, obj_root, mode='train')
