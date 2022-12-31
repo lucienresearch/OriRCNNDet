@@ -91,3 +91,9 @@ test set mAP 0.763
 然后使用OpenCV函数寻找轮廓函数查找出所有可以粘贴的区域：`cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)`。
 但区域存在较小或较大的情况，以及距离边界过近等问题，需要基于区域大小及区域位置进一步筛选，提取出Top5区域，效果如下:  
 ![Top5 Empty Area](./images/empty_area.png)
+
+### 粘贴大小
+考虑到真实场景下，不同物品之间大小差异问题，例如打火机和雨伞，直接按照同一个大小粘贴，不符合常识，因此需要粘贴obj时的大小做控制。
+方法：首先针对不同类别的obj预设一个patch_size，当时把obj往图片上粘贴时，先从预设的patch_size中获取对应类别的patch_size，然后使用该patch_size粘贴obj到图片中，代码如下：
+![](size_1.jpg)
+![](size_2.jpg)
